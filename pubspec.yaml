@@ -28,6 +28,7 @@ dependencies:
   mobile_scanner: ^6.0.2
   just_audio: ^0.9.36
   provider: ^6.0.0
+  intl: ^0.17.0
 
 
 

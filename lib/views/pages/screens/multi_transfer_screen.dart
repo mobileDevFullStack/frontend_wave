@@ -1,228 +1,8 @@
-// import 'package:flutter/material.dart';
-// import 'package:flutter_contacts/flutter_contacts.dart';
-
-// class MultiTransferScreen extends StatefulWidget {
-//   const MultiTransferScreen({Key? key}) : super(key: key);
-
-//   @override
-//   State<MultiTransferScreen> createState() => _MultiTransferScreenState();
-// }
-
-// class _MultiTransferScreenState extends State<MultiTransferScreen> {
-//   final _formKey = GlobalKey<FormState>();
-//   final _amountController = TextEditingController();
-//   final List<TransferRecipient> _recipients = [];
-//   final Set<String> _selectedContactIds = {}; // Pour suivre les contacts déjà sélectionnés
-//   bool _isLoading = false;
-
-//   Future<void> _addRecipient() async {
-//     try {
-//       final contact = await FlutterContacts.openExternalPick();
-//       if (contact != null) {
-//         // Vérifier si le contact est déjà sélectionné
-//         if (_selectedContactIds.contains(contact.id)) {
-//           if (mounted) {
-//             ScaffoldMessenger.of(context).showSnackBar(
-//               const SnackBar(
-//                 content: Text('Ce contact est déjà dans la liste des destinataires'),
-//                 backgroundColor: Colors.orange,
-//               ),
-//             );
-//           }
-//           return;
-//         }
-
-//         final fullContact = await FlutterContacts.getContact(contact.id);
-//         if (fullContact != null && fullContact.phones.isNotEmpty) {
-//           setState(() {
-//             _recipients.add(TransferRecipient(
-//               contact: fullContact,
-//               phoneNumber: fullContact.phones.first.number,
-//               amount: _amountController.text,
-//             ));
-//             _selectedContactIds.add(contact.id); // Ajouter l'ID au Set
-//           });
-//         }
-//       }
-//     } catch (e) {
-//       if (mounted) {
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           const SnackBar(content: Text('Erreur lors de l\'accès aux contacts')),
-//         );
-//       }
-//     }
-//   }
-
-//   void _removeRecipient(int index) {
-//     final removedContact = _recipients[index];
-//     setState(() {
-//       _recipients.removeAt(index);
-//       _selectedContactIds.remove(removedContact.contact.id); // Retirer l'ID du Set
-//     });
-//   }
-
-//   Future<void> _handleMultiTransfer() async {
-//     if (_formKey.currentState!.validate() && _recipients.isNotEmpty) {
-//       setState(() => _isLoading = true);
-//       try {
-//         // Simuler des transferts multiples
-//         await Future.delayed(const Duration(seconds: 2));
-//         if (mounted) {
-//           ScaffoldMessenger.of(context).showSnackBar(
-//             const SnackBar(
-//               content: Text('Transferts effectués avec succès'),
-//               backgroundColor: Colors.green,
-//             ),
-//           );
-//           Navigator.pop(context);
-//         }
-//       } catch (e) {
-//         if (mounted) {
-//           ScaffoldMessenger.of(context).showSnackBar(
-//             SnackBar(content: Text('Erreur: ${e.toString()}')),
-//           );
-//         }
-//       } finally {
-//         if (mounted) {
-//           setState(() => _isLoading = false);
-//         }
-//       }
-//     } else if (_recipients.isEmpty) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(
-//           content: Text('Veuillez ajouter au moins un destinataire'),
-//           backgroundColor: Colors.orange,
-//         ),
-//       );
-//     }
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(
-//         title: const Text('Transfert Multiple'),
-//         elevation: 0,
-//       ),
-//       body: Form(
-//         key: _formKey,
-//         child: ListView(
-//           padding: const EdgeInsets.all(20),
-//           children: [
-//             // Montant par défaut
-//             TextFormField(
-//               controller: _amountController,
-//               decoration: InputDecoration(
-//                 labelText: 'Montant par défaut',
-//                 prefixIcon: const Icon(Icons.attach_money),
-//                 border: OutlineInputBorder(
-//                   borderRadius: BorderRadius.circular(15),
-//                 ),
-//               ),
-//               keyboardType: TextInputType.number,
-//               validator: (value) {
-//                 if (value == null || value.isEmpty) {
-//                   return 'Veuillez entrer un montant';
-//                 }
-//                 if (double.tryParse(value) == null) {
-//                   return 'Montant invalide';
-//                 }
-//                 return null;
-//               },
-//             ),
-//             const SizedBox(height: 20),
-
-//             // Liste des destinataires
-//             ..._recipients.asMap().entries.map((entry) {
-//               final index = entry.key;
-//               final recipient = entry.value;
-//               return Card(
-//                 margin: const EdgeInsets.only(bottom: 10),
-//                 shape: RoundedRectangleBorder(
-//                   borderRadius: BorderRadius.circular(15),
-//                 ),
-//                 child: ListTile(
-//                   leading: const CircleAvatar(
-//                     child: Icon(Icons.person),
-//                   ),
-//                   title: Text(recipient.contact.displayName),
-//                   subtitle: Text(recipient.phoneNumber),
-//                   trailing: IconButton(
-//                     icon: const Icon(Icons.remove_circle_outline),
-//                     color: Colors.red,
-//                     onPressed: () => _removeRecipient(index),
-//                   ),
-//                 ),
-//               );
-//             }),
-
-//             const SizedBox(height: 20),
-
-//             // Bouton d'ajout de destinataire
-//             OutlinedButton.icon(
-//               onPressed: _addRecipient,
-//               icon: const Icon(Icons.person_add),
-//               label: const Text('Ajouter un destinataire'),
-//               style: OutlinedButton.styleFrom(
-//                 padding: const EdgeInsets.symmetric(vertical: 15),
-//                 shape: RoundedRectangleBorder(
-//                   borderRadius: BorderRadius.circular(15),
-//                 ),
-//               ),
-//             ),
-
-//             const SizedBox(height: 30),
-
-//             // Bouton de transfert
-//             FilledButton(
-//               onPressed: _isLoading ? null : _handleMultiTransfer,
-//               style: FilledButton.styleFrom(
-//                 padding: const EdgeInsets.symmetric(vertical: 15),
-//                 shape: RoundedRectangleBorder(
-//                   borderRadius: BorderRadius.circular(15),
-//                 ),
-//               ),
-//               child: _isLoading
-//                   ? const SizedBox(
-//                       height: 20,
-//                       width: 20,
-//                       child: CircularProgressIndicator(
-//                         strokeWidth: 2,
-//                         color: Colors.white,
-//                       ),
-//                     )
-//                   : Text(
-//                       'Effectuer les transferts (${_recipients.length})',
-//                       style: const TextStyle(fontSize: 16),
-//                     ),
-//             ),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-
-//   @override
-//   void dispose() {
-//     _amountController.dispose();
-//     super.dispose();
-//   }
-// }
-
-// class TransferRecipient {
-//   final Contact contact;
-//   final String phoneNumber;
-//   final String amount;
-
-//   TransferRecipient({
-//     required this.contact,
-//     required this.phoneNumber,
-//     required this.amount,
-//   });
-// }
-
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:provider/provider.dart';
+import '../../../providers/api_provider.dart';
+import '../../../core/decode/jwt_decoder.dart';
 
 class ManualContact implements Contact {
   final String id;
@@ -580,27 +360,69 @@ class _MultiTransferScreenState extends State<MultiTransferScreen> {
   Future<void> _handleMultiTransfer() async {
     if (_formKey.currentState!.validate() && _recipients.isNotEmpty) {
       setState(() => _isLoading = true);
+
+      final provider = Provider.of<ApiProvider>(context, listen: false);
+      final token = await provider.getToken();
+
+      if (token == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Vous devez être connecté pour effectuer un transfert'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Récupérer l'ID de l'utilisateur à partir du token
+      final userId = JwtDecoder.getUserIdFromToken(token);
+      if (userId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossible de récupérer vos informations'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       try {
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) {
+        // Prépare la liste des destinataires
+        final recipients = _recipients
+            .map((r) => {
+                  'phone': r.phoneNumber,
+                  'amount': double.parse(_amountController.text),
+                })
+            .toList();
+
+        final response = await provider.initiateTransferMultiple(
+          senderId: userId, // À remplacer par l'ID réel de l'expéditeur
+          recipients: recipients,
+        );
+
+        if (response?['success'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Transferts effectués avec succès'),
+            SnackBar(
+              content: Text(response!['message']),
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context);
-        }
-      } catch (e) {
-        if (mounted) {
+          Navigator.pop(context); // Retourne à l'écran précédent
+        } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Erreur: ${e.toString()}')),
+            SnackBar(
+              content: Text(response?['message'] ?? 'Erreur lors du transfert'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : ${e.toString()}')),
+        );
       } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
+        setState(() => _isLoading = false);
       }
     } else if (_recipients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

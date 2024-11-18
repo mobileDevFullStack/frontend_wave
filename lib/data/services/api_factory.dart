@@ -11,4 +11,4 @@ IApiService createApiService(String baseUrl) {
   } else {
     throw Exception('API_TYPE non supporté');
   }
-}
+}   

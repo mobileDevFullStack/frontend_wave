@@ -1,22 +1,31 @@
 import 'package:flutter/material.dart';
 import '../../../data/services/auth_service.dart';
 import '../widgets/signup_form_widget.dart';
+import '../widgets/sms_code_input_widget.dart';
 import 'home_screen.dart';
+import 'update_credentials_screen.dart';
+import 'transaction_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
   _LoginScreenState createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _phoneController = TextEditingController();
+  final _secretCodeController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
+
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  bool _showPassword = false;
+
+  bool _showSecretCode = false;
   bool _showSignupForm = false;
   bool _isLoading = false;
+  bool _isDistributor = false;
 
   @override
   void initState() {
@@ -32,9 +41,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     _phoneController.addListener(() {
       if (_phoneController.text.length == 9) {
-        setState(() => _showPassword = true);
+        setState(() => _showSecretCode = true);
       } else {
-        setState(() => _showPassword = false);
+        setState(() => _showSecretCode = false);
+      }
+    });
+
+    _secretCodeController.addListener(() {
+      if (_showSecretCode &&
+          _phoneController.text.length == 9 &&
+          _secretCodeController.text.length == 4) {
+        _initiateLogin();
       }
     });
   }
@@ -57,7 +74,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       ),
       child: Center(
         child: Icon(
-          Icons.account_balance_wallet,
+          _isDistributor ? Icons.store : Icons.account_balance_wallet,
           size: 60,
           color: Theme.of(context).primaryColor,
         ),
@@ -65,30 +82,144 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  Future<void> _login() async {
-    if (_phoneController.text.length != 9 || _passwordController.text.isEmpty) {
-      _showErrorSnackBar('Veuillez remplir tous les champs correctement');
-      return;
-    }
+  Widget _buildUserTypeSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            spreadRadius: 2,
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _isDistributor = false),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: !_isDistributor
+                      ? Theme.of(context).primaryColor
+                      : Colors.white,
+                  borderRadius:
+                      BorderRadius.horizontal(left: Radius.circular(15)),
+                ),
+                child: Text(
+                  'Client',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color:
+                        !_isDistributor ? Colors.white : Colors.grey.shade600,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _isDistributor = true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: _isDistributor
+                      ? Theme.of(context).primaryColor
+                      : Colors.white,
+                  borderRadius:
+                      BorderRadius.horizontal(right: Radius.circular(15)),
+                ),
+                child: Text(
+                  'Distributeur',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _isDistributor ? Colors.white : Colors.grey.shade600,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Future<void> _initiateLogin() async {
+    if (_isLoading) return;
 
     setState(() => _isLoading = true);
 
     try {
-      final success = await _authService.login(
-        _phoneController.text,
-        _passwordController.text,
-      );
-
-      if (success) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => HomeScreen()),
+      if (_isDistributor) {
+        final loginResult = await _authService.loginDistributor(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
         );
+
+        if (loginResult['success']) {
+          if (loginResult['has_updated_credentials']) {
+            // Si les identifiants ont déjà été mis à jour, aller directement à TransactionScreen
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => TransactionScreen()),
+            );
+          } else if (loginResult['requires_update']) {
+            // Si c'est la première connexion, aller à l'écran de mise à jour
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => UpdateCredentialsScreen(
+                  email: _emailController.text.trim(),
+                  currentPassword: _passwordController.text.trim(),
+                ),
+              ),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => TransactionScreen()),
+            );
+          }
+        } else {
+          _showErrorSnackBar('Identifiants incorrects. Veuillez réessayer.');
+        }
       } else {
-        _showErrorSnackBar('Identifiants incorrects');
+        // Le reste du code pour la connexion client reste inchangé
+        final loginSuccess = await _authService.login(
+          _phoneController.text.trim(),
+          _secretCodeController.text.trim(),
+        );
+
+        if (loginSuccess) {
+          final verificationResult = await Navigator.push<Map<String, dynamic>>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SmsCodeInputScreen(
+                phoneNumber: _phoneController.text.trim(),
+              ),
+            ),
+          );
+
+          if (verificationResult != null &&
+              verificationResult['success'] == true) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => HomeScreen()),
+            );
+          } else {
+            _showErrorSnackBar('Code SMS invalide. Veuillez réessayer.');
+          }
+        } else {
+          _showErrorSnackBar('Identifiants incorrects. Veuillez réessayer.');
+        }
       }
     } catch (e) {
-      _showErrorSnackBar('Connexion impossible. Vérifiez votre connexion internet.');
+      _showErrorSnackBar(e.toString());
     } finally {
       setState(() => _isLoading = false);
     }
@@ -109,9 +240,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     required TextEditingController controller,
     required String label,
     required IconData icon,
-    bool isPassword = false,
     TextInputType? keyboardType,
     int? maxLength,
+    bool isPassword = false,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -128,10 +259,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       ),
       child: TextField(
         controller: controller,
-        obscureText: isPassword,
-        keyboardType: keyboardType,
+        keyboardType: keyboardType ?? TextInputType.text,
         maxLength: maxLength,
         style: const TextStyle(color: Colors.black87),
+        obscureText: isPassword,
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(color: Colors.grey.shade600),
@@ -157,7 +288,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           _buildWalletLogo(),
           const SizedBox(height: 40),
           Text(
-            "Bienvenue sur votre\nportefeuille numérique ",
+            _isDistributor
+                ? "Espace Distributeur"
+                : "Bienvenue sur votre\nportefeuille numérique",
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
@@ -166,14 +299,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 40),
-          _buildInputField(
-            controller: _phoneController,
-            label: 'Numéro de téléphone',
-            icon: Icons.phone,
-            keyboardType: TextInputType.phone,
-            maxLength: 9,
-          ),
-          if (_showPassword) ...[
+          _buildUserTypeSelector(),
+          const SizedBox(height: 30),
+          if (_isDistributor) ...[
+            _buildInputField(
+              controller: _emailController,
+              label: 'Email',
+              icon: Icons.email,
+              keyboardType: TextInputType.emailAddress,
+            ),
             const SizedBox(height: 20),
             _buildInputField(
               controller: _passwordController,
@@ -181,47 +315,68 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               icon: Icons.lock,
               isPassword: true,
             ),
-          ],
-          const SizedBox(height: 30),
-          if (_isLoading)
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
-            )
-          else
+            const SizedBox(height: 30),
             ElevatedButton(
-              onPressed: () {
-                if (_phoneController.text.length == 9 && _passwordController.text.isNotEmpty) {
-                  _login();
-                }
-              },
+              onPressed: _isLoading ? null : _initiateLogin,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
-                elevation: 5,
               ),
-              child: const Text(
-                "Se connecter",
+              child: _isLoading
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text('Se connecter'),
+            ),
+          ] else ...[
+            _buildInputField(
+              controller: _phoneController,
+              label: 'Numéro de téléphone',
+              icon: Icons.phone,
+              keyboardType: TextInputType.phone,
+              maxLength: 9,
+            ),
+            if (_showSecretCode) ...[
+              const SizedBox(height: 20),
+              _buildInputField(
+                controller: _secretCodeController,
+                label: 'Code secret',
+                icon: Icons.lock,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                isPassword: true,
+              ),
+            ],
+          ],
+          if (_isLoading && !_isDistributor)
+            Padding(
+              padding: const EdgeInsets.only(top: 30),
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(
+                    Theme.of(context).primaryColor),
+              ),
+            ),
+          if (!_isDistributor) ...[
+            const SizedBox(height: 20),
+            TextButton(
+              onPressed: () => setState(() => _showSignupForm = true),
+              child: Text(
+                "Pas de compte ? S'inscrire",
                 style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: Theme.of(context).primaryColor,
+                  fontSize: 16,
                 ),
               ),
             ),
-          const SizedBox(height: 20),
-          TextButton(
-            onPressed: () => setState(() => _showSignupForm = true),
-            child: Text(
-              "Pas de compte ? S'inscrire",
-              style: TextStyle(
-                color: Theme.of(context).primaryColor,
-                fontSize: 16,
-              ),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -229,7 +384,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       body: SafeArea(
@@ -250,193 +404,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void dispose() {
     _phoneController.dispose();
+    _secretCodeController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     _animationController.dispose();
     super.dispose();
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// import 'package:flutter/material.dart';
-// import '../../../data/services/auth_service.dart';
-// import '../widgets/signup_form_widget.dart';
-// import '../widgets/sms_code_input_widget.dart';
-// import 'home_screen.dart';
-
-// class LoginScreen extends StatefulWidget {
-//   @override
-//   _LoginScreenState createState() => _LoginScreenState();
-// }
-
-// class _LoginScreenState extends State<LoginScreen> {
-//   final _phoneController = TextEditingController();
-//   final _secretCodeController = TextEditingController();
-//   final AuthService _authService = AuthService();
-
-//   bool _showSecretCode = false;
-//   bool _showSmsCodeInput = false;
-//   bool _isLoading = false;
-//   bool _showSignupForm = false;
-//   String _phoneNumber = "";
-
-//   @override
-//   void initState() {
-//     super.initState();
-//     _phoneController.addListener(() {
-//       setState(() {
-//         _showSecretCode = _phoneController.text.length == 9;
-//       });
-//     });
-//   }
-
-//   Future<void> _handleSecretCodeSubmission() async {
-//     if (_phoneController.text.length == 9 && _secretCodeController.text.length == 4) {
-//       setState(() {
-//         _showSmsCodeInput = true;
-//         _phoneNumber = _phoneController.text;
-//       });
-//       // Call backend to initiate SMS code sending here if needed.
-//     } else {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(content: Text("Veuillez entrer un numéro et un code secret valides")),
-//       );
-//     }
-//   }
-
-//   Widget _buildLoginForm() {
-//     return Column(
-//       mainAxisAlignment: MainAxisAlignment.center,
-//       children: [
-//         const Text(
-//           "Entrez votre numéro de téléphone",
-//           style: TextStyle(
-//             fontSize: 24,
-//             fontWeight: FontWeight.bold,
-//             color: Colors.white,
-//           ),
-//           textAlign: TextAlign.center,
-//         ),
-//         const SizedBox(height: 20),
-//         TextField(
-//           controller: _phoneController,
-//           keyboardType: TextInputType.phone,
-//           maxLength: 9,
-//           style: TextStyle(color: Colors.white),
-//           decoration: InputDecoration(
-//             filled: true,
-//             fillColor: Colors.white24,
-//             labelText: 'Numéro de téléphone',
-//             labelStyle: TextStyle(color: Colors.white),
-//             prefixIcon: Icon(Icons.phone, color: Colors.white),
-//             border: OutlineInputBorder(
-//               borderRadius: BorderRadius.circular(10),
-//               borderSide: BorderSide.none,
-//             ),
-//             counterText: "",
-//           ),
-//         ),
-//         const SizedBox(height: 20),
-//         if (_showSecretCode)
-//           TextField(
-//             controller: _secretCodeController,
-//             keyboardType: TextInputType.number,
-//             maxLength: 4,
-//             obscureText: true,
-//             style: TextStyle(color: Colors.white),
-//             decoration: InputDecoration(
-//               filled: true,
-//               fillColor: Colors.white24,
-//               labelText: 'Code secret (4 chiffres)',
-//               labelStyle: TextStyle(color: Colors.white),
-//               prefixIcon: Icon(Icons.lock, color: Colors.white),
-//               border: OutlineInputBorder(
-//                 borderRadius: BorderRadius.circular(10),
-//                 borderSide: BorderSide.none,
-//               ),
-//               counterText: "",
-//             ),
-//             onChanged: (value) {
-//               if (value.length == 4) _handleSecretCodeSubmission();
-//             },
-//           ),
-//         const SizedBox(height: 20),
-//         if (!_showSmsCodeInput)
-//           Column(
-//             children: [
-//               TextButton(
-//                 onPressed: () {
-//                   setState(() => _showSignupForm = true);
-//                 },
-//                 child: Text("Pas de compte ? S'inscrire", style: TextStyle(color: Colors.white)),
-//               ),
-//               TextButton(
-//                 onPressed: () { 
-//                   // Handle forgotten password logic
-//                 },
-//                 child: Text("Mot de passe oublié ?", style: TextStyle(color: Colors.white)),
-//               ),
-//               TextButton(
-//                 onPressed: () {
-//                   // Handle distributor login logic
-//                 },
-//                 child: Text("Se connecter en tant que distributeur", style: TextStyle(color: Colors.white)),
-//               ),
-//             ],
-//           ),
-//       ],
-//     );
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       backgroundColor: Colors.blue,
-//       body: Center(
-//         child: Padding(
-//           padding: const EdgeInsets.all(20.0),
-//           child: _showSignupForm
-//               ? SignupFormWidget(
-//                   onLoginClick: () {
-//                     setState(() => _showSignupForm = false);
-//                   },
-//                 )
-//               : _showSmsCodeInput
-//                   ? SmsCodeInputWidget(
-//                       phoneNumber: _phoneNumber,
-//                       onCodeEntered: (code) async {
-//                         final success = await _authService.verifySmsCode(_phoneNumber, code);
-//                         if (success) {
-//                           Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
-//                         } else {
-//                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Code SMS incorrect")));
-//                         }
-//                       },
-//                     )
-//                   : _buildLoginForm(),
-//         ),
-//       ),
-//     );
-//   }
-
-//   @override
-//   void dispose() {
-//     _phoneController.dispose();
-//     _secretCodeController.dispose();
-//     super.dispose();
-//   }
-// }

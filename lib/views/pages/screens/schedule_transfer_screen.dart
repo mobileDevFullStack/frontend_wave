@@ -1,4 +1,9 @@
+
+
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../../providers/api_provider.dart';
+import '../../../core/decode/jwt_decoder.dart';
 
 class ScheduleTransferScreen extends StatefulWidget {
   const ScheduleTransferScreen({Key? key}) : super(key: key);
@@ -11,7 +16,7 @@ class _ScheduleTransferScreenState extends State<ScheduleTransferScreen> {
   final _formKey = GlobalKey<FormState>();
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
-  String _frequency = 'once';
+  String _frequency = 'jour';
   bool _isLoading = false;
   final _amountController = TextEditingController();
   final _recipientController = TextEditingController();
@@ -28,25 +33,101 @@ class _ScheduleTransferScreenState extends State<ScheduleTransferScreen> {
       setState(() => _isLoading = true);
       
       try {
-        // Simuler un délai de traitement
-        await Future.delayed(const Duration(seconds: 2));
-        
-        // Afficher une confirmation
-        if (mounted) {
+        final DateTime nextDate = DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+          _selectedTime.hour,
+          _selectedTime.minute,
+        );
+
+        final double amount = double.parse(_amountController.text);
+        final provider = Provider.of<ApiProvider>(context, listen: false);
+        final token = await provider.getToken();
+
+        if (token == null) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Transfert programmé avec succès'),
-              backgroundColor: Colors.green,
+              content: Text('Vous devez être connecté pour effectuer un transfert'),
+              backgroundColor: Colors.red,
             ),
           );
-          Navigator.pop(context);
+          return;
+        }
+
+        final userId = JwtDecoder.getUserIdFromToken(token);
+        if (userId == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Impossible de récupérer vos informations'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        
+        final result = await provider.initiateTransferPlanifier(
+          userId: userId,
+          recipientPhone: _recipientController.text,
+          amount: amount,
+          frequency: _frequency,
+          nextDate: nextDate,
+        );
+
+        if (mounted) {
+          if (result?['success'] == true) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Text(result?['message'] ?? 'Transfert programmé avec succès'),
+                  ],
+                ),
+                backgroundColor: Colors.green.shade600,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+            Navigator.pop(context);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Text(result?['message'] ?? 'Échec du transfert'),
+                  ],
+                ),
+                backgroundColor: Colors.red.shade600,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+          }
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Erreur: ${e.toString()}'),
-              backgroundColor: Colors.red,
+              content: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Text('Erreur: ${e.toString()}'),
+                ],
+              ),
+              backgroundColor: Colors.red.shade600,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           );
         }
@@ -60,77 +141,132 @@ class _ScheduleTransferScreenState extends State<ScheduleTransferScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text('Planifier un Transfert'),
+        title: const Text(
+          'Planifier un Transfert',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.white,
         elevation: 0,
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            TextFormField(
-              controller: _amountController,
-              decoration: InputDecoration(
-                labelText: 'Montant',
-                prefixIcon: const Icon(Icons.attach_money),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
+      body: SafeArea(
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            children: [
+              // Amount Input
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: TextFormField(
+                  controller: _amountController,
+                  decoration: InputDecoration(
+                    labelText: 'Montant',
+                    labelStyle: TextStyle(color: theme.primaryColor),
+                    prefixIcon: Icon(Icons.attach_money, color: theme.primaryColor),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Veuillez entrer un montant';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Veuillez entrer un montant valide';
+                    }
+                    return null;
+                  },
                 ),
               ),
-              keyboardType: TextInputType.number,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Veuillez entrer un montant';
-                }
-                if (double.tryParse(value) == null) {
-                  return 'Veuillez entrer un montant valide';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            TextFormField(
-              controller: _recipientController,
-              decoration: InputDecoration(
-                labelText: 'Numéro du destinataire',
-                prefixIcon: const Icon(Icons.person_outline),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
+              // Recipient Input
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: TextFormField(
+                  controller: _recipientController,
+                  decoration: InputDecoration(
+                    labelText: 'Numéro du destinataire',
+                    labelStyle: TextStyle(color: theme.primaryColor),
+                    prefixIcon: Icon(Icons.person_outline, color: theme.primaryColor),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Veuillez entrer un numéro';
+                    }
+                    if (value.length < 8) {
+                      return 'Numéro invalide';
+                    }
+                    return null;
+                  },
                 ),
               ),
-              keyboardType: TextInputType.phone,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Veuillez entrer un numéro';
-                }
-                if (value.length < 8) {
-                  return 'Numéro invalide';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 30),
+              const SizedBox(height: 24),
 
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(15),
+              // Date and Time Section
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       'Date et heure',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
@@ -151,10 +287,17 @@ class _ScheduleTransferScreenState extends State<ScheduleTransferScreen> {
                             icon: const Icon(Icons.calendar_today),
                             label: Text(
                               '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () async {
@@ -169,6 +312,13 @@ class _ScheduleTransferScreenState extends State<ScheduleTransferScreen> {
                             icon: const Icon(Icons.access_time),
                             label: Text(
                               '${_selectedTime.hour}:${_selectedTime.minute.toString().padLeft(2, '0')}',
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
@@ -177,85 +327,101 @@ class _ScheduleTransferScreenState extends State<ScheduleTransferScreen> {
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(15),
+              // Frequency Section
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       'Fréquence',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 15),
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(
-                          value: 'once',
-                          label: Text('Une fois'),
-                          icon: Icon(Icons.looks_one_outlined),
+                    const SizedBox(height: 16),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                            value: 'jour',
+                            label: Text('Quotidien'),
+                            icon: Icon(Icons.calendar_today),
+                          ),
+                          ButtonSegment(
+                            value: 'semaine',
+                            label: Text('Hebdo'),
+                            icon: Icon(Icons.calendar_view_week),
+                          ),
+                          ButtonSegment(
+                            value: 'mois',
+                            label: Text('Mensuel'),
+                            icon: Icon(Icons.calendar_month),
+                          ),
+                        ],
+                        selected: {_frequency},
+                        onSelectionChanged: (Set<String> newSelection) {
+                          setState(() {
+                            _frequency = newSelection.first;
+                          });
+                        },
+                        style: ButtonStyle(
+                          side: MaterialStateProperty.all(
+                            BorderSide(color: theme.primaryColor.withOpacity(0.2)),
+                          ),
                         ),
-                        ButtonSegment(
-                          value: 'daily',
-                          label: Text('Quotidien'),
-                          icon: Icon(Icons.calendar_today),
-                        ),
-                        ButtonSegment(
-                          value: 'weekly',
-                          label: Text('Hebdo'),
-                          icon: Icon(Icons.calendar_view_week),
-                        ),
-                        ButtonSegment(
-                          value: 'monthly',
-                          label: Text('Mensuel'),
-                          icon: Icon(Icons.calendar_month),
-                        ),
-                      ],
-                      selected: {_frequency},
-                      onSelectionChanged: (Set<String> newSelection) {
-                        setState(() {
-                          _frequency = newSelection.first;
-                        });
-                      },
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 30),
+              const SizedBox(height: 32),
 
-            FilledButton(
-              onPressed: _isLoading ? null : _handleSubmit,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
+              // Submit Button
+              SizedBox(
+                height: 56,
+                child: FilledButton(
+                  onPressed: _isLoading ? null : _handleSubmit,
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Programmer le transfert',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
               ),
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text(
-                      'Programmer le transfert',
-                      style: TextStyle(fontSize: 16),
-                    ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

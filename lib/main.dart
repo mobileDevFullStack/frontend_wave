@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -9,6 +7,9 @@ import 'data/services/api_factory.dart';
 import 'views/pages/screens/login_screen.dart';
 import 'core/constants/api_constants.dart';
 import 'data/services/auth_service.dart';
+import 'data/services/transfert_service.dart';
+
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +26,9 @@ void main() async {
         ),
         ChangeNotifierProvider<AuthService>(
           create: (_) => AuthService(),
+        ),
+        ChangeNotifierProvider<TransfertService>(
+          create: (_) => TransfertService(apiService, tokenStorage),
         ),
       ],
       child: MyApp(),
